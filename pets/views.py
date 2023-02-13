@@ -44,19 +44,39 @@ class PetView(APIView, PageNumberPagination):
 class PetDetailView(APIView):
     def patch(self, req: Request, pet_id: int):
         pet_update_exists = get_object_or_404(Pet, id=pet_id)
-        serializer = PetSerializer(data=req.data)
+        data = req.data
+        if "name" in data:
+            pet_update_exists.name = data["name"]
+        if "age" in data:
+            pet_update_exists.age = data["age"]
+        if "weight" in data:
+            pet_update_exists.weight = data["weight"]
+        pet_update_exists.save()
+        serializer = PetSerializer(pet_update_exists, req.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        traits_data = serializer.validated_data.pop("traits")
-        group_data = serializer.validated_data.pop("group")
         try:
-            group = Group.objects.get(scientific_name=group_data["scientific_name"])
-        except Group.DoesNotExist:
-            group = Group.objects.create(**group_data)
-        pet_data_obj = Pet.objects.update(**serializer.validated_data, group=group)
-        for trait_loop in traits_data:
-            trait, _ = Trait.objects.get_or_create(**trait_loop)
-            pet_data_obj.traits.add(trait)
-        return Response(serializer.data, status.HTTP_201_CREATED)
+            traits_data = serializer.validated_data.get("traits", [])
+            group_data = serializer.validated_data.get("group", {})
+        except KeyError:
+            return Response({"error": "Invalid request data"}, status.HTTP_400_BAD_REQUEST)
+        if group_data:
+            try:
+                group = Group.objects.get(scientific_name=group_data["scientific_name"])
+            except Group.DoesNotExist:
+                group = Group.objects.create(**group_data)
+            pet_update_exists.group = group
+            pet_update_exists.save()
+        if traits_data:
+            list = []
+            for trait_loop in traits_data:
+                trait_dict = dict(trait_loop)
+                trait, _ = Trait.objects.get_or_create(**trait_dict)
+                list.append(trait)
+                # pet_update_exists.traits.add(trait)
+            pet_update_exists.traits.set(list)
+        pet_update_exists.save()
+        serializer = PetSerializer(pet_update_exists)
+        return Response(serializer.data, status.HTTP_200_OK)
 
     def delete(self, req: Request, pet_id: int):
         pet_delete_exists = get_object_or_404(Pet, id=pet_id)
