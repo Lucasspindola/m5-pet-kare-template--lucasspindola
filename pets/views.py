@@ -5,7 +5,6 @@ from traits.models import Trait
 from groups.models import Group
 from .serializers import PetSerializer
 from traits.serializers import TraitSerializer
-import ipdb
 from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import get_object_or_404
 from django.forms.models import model_to_dict
@@ -14,7 +13,11 @@ from rest_framework.views import APIView, Request, Response, status
 
 class PetView(APIView, PageNumberPagination):
     def get(self, req: Request):
-        pets = Pet.objects.all()
+        pets_trait = req.query_params.get("trait", None)
+        if pets_trait:
+            pets = Pet.objects.filter(traits__name__iexact=pets_trait)
+        else:
+            pets = Pet.objects.all()
         result_page = self.paginate_queryset(pets, req)
         serializer = PetSerializer(result_page, many=True)
         return self.get_paginated_response(serializer.data)
@@ -70,9 +73,8 @@ class PetDetailView(APIView):
             list = []
             for trait_loop in traits_data:
                 trait_dict = dict(trait_loop)
-                trait, _ = Trait.objects.get_or_create(**trait_dict)
+                trait, _ = Trait.objects.get_or_create(trait_dict)
                 list.append(trait)
-                # pet_update_exists.traits.add(trait)
             pet_update_exists.traits.set(list)
         pet_update_exists.save()
         serializer = PetSerializer(pet_update_exists)
